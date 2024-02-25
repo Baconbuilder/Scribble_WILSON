@@ -39,11 +39,11 @@ class Compose(object):
     def __len__(self):
         return len(self.transforms)
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         if lbl is not None:
             for t in self.transforms:
-                img, lbl = t(img, lbl)
-            return img, lbl
+                img, lbl, scrib_lbl = t(img, lbl, scrib_lbl)
+            return img, lbl, scrib_lbl
         else:
             for t in self.transforms:
                 img = t(img)
@@ -76,7 +76,7 @@ class Resize(object):
         self.size = size
         self.interpolation = interpolation
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be scaled.
@@ -86,9 +86,9 @@ class Resize(object):
         """
         if lbl is not None:
             if isinstance(lbl, torch.Tensor):
-                F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.BILINEAR)
+                F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.BILINEAR), F.resize(scrib_lbl, self.size, InterpolationMode.BILINEAR)
             else:
-                return F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.NEAREST)
+                return F.resize(img, self.size, self.interpolation), F.resize(lbl, self.size, InterpolationMode.NEAREST), F.resize(scrib_lbl, self.size, InterpolationMode.NEAREST)
         else:
             return F.resize(img, self.size, self.interpolation)
 
@@ -107,7 +107,7 @@ class PadCenterCrop(object):
         self.padding_mode = padding_mode
         self.fill = fill
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
 
         # pad the width if needed
         if lbl is None:
@@ -125,17 +125,24 @@ class PadCenterCrop(object):
             else:
                 lbl_size = lbl.size
             assert img.size == lbl_size, 'size of img and lbl should be the same. %s, %s' % (img.size, lbl_size)
+            if isinstance(scrib_lbl, torch.Tensor):
+                scrib_lbl_size = scrib_lbl.size()[-1], scrib_lbl.size()[-2]
+            else:
+                scrib_lbl_size = scrib_lbl.size
+            assert img.size == scrib_lbl_size, 'size of img and lbl should be the same. %s, %s' % (img.size, lbl_size)
             # pad the width if needed
             if self.pad_if_needed and img.size[0] < self.size[1]:
                 img = F.pad(img, (self.size[1] - img.size[0], 0), self.fill, self.padding_mode)
                 lbl = F.pad(lbl, (self.size[1] - lbl_size[0], 0), 255, self.padding_mode)
+                scrib_lbl = F.pad(scrib_lbl, (self.size[1] - scrib_lbl_size[0], 0), 255, self.padding_mode)
 
             # pad the height if needed
             if self.pad_if_needed and img.size[1] < self.size[0]:
                 img = F.pad(img, (0, self.size[0] - img.size[1]), self.fill, self.padding_mode)
                 lbl = F.pad(lbl, (0, self.size[0] - lbl_size[1]), 255, self.padding_mode)
+                scrib_lbl = F.pad(scrib_lbl, (0, self.size[0] - scrib_lbl_size[1]), 255, self.padding_mode)
 
-            return F.center_crop(img, self.size), F.center_crop(lbl, self.size)
+            return F.center_crop(img, self.size), F.center_crop(lbl, self.size), F.center_crop(scrib_lbl, self.size)
 
 
 class CenterCrop(object):
@@ -153,7 +160,7 @@ class CenterCrop(object):
         else:
             self.size = size
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be cropped.
@@ -162,7 +169,7 @@ class CenterCrop(object):
             PIL Image: Cropped image.
         """
         if lbl is not None:
-            return F.center_crop(img, self.size), F.center_crop(lbl, self.size)
+            return F.center_crop(img, self.size), F.center_crop(lbl, self.size), F.center_crop(scrib_lbl, self.size)
         else:
             return F.center_crop(img, self.size)
 
@@ -202,9 +209,9 @@ class Pad(object):
 
         self.padding = padding
         self.fill = fill
-        self.padding_mode = padding_mode
+        self.padding_mode = padding_mode                
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be padded.
@@ -212,8 +219,7 @@ class Pad(object):
             PIL Image: Padded image.
         """
         if lbl is not None:
-            return F.pad(img, self.padding, self.fill, self.padding_mode), F.pad(lbl, self.padding, self.fill,
-                                                                                 self.padding_mode)
+            return F.pad(img, self.padding, self.fill, self.padding_mode), F.pad(lbl, self.padding, self.fill, self.padding_mode), F.pad(scrib_lbl, self.padding, self.fill, self.padding_mode)
         else:
             return F.pad(img, self.padding, self.fill, self.padding_mode)
 
@@ -232,9 +238,9 @@ class Lambda(object):
         assert callable(lambd), repr(type(lambd).__name__) + " object is not callable"
         self.lambd = lambd
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         if lbl is not None:
-            return self.lambd(img), self.lambd(lbl)
+            return self.lambd(img), self.lambd(lbl), self.lambd(scrib_lbl)
         else:
             return self.lambd(img)
 
@@ -287,7 +293,7 @@ class RandomRotation(object):
 
         return angle
 
-    def __call__(self, img, lbl):
+    def __call__(self, img, lbl, scrib_lbl):
         """
             img (PIL Image): Image to be rotated.
             lbl (PIL Image): Label to be rotated.
@@ -300,7 +306,7 @@ class RandomRotation(object):
         angle = self.get_params(self.degrees)
         if lbl is not None:
             return F.rotate(img, angle, self.resample, self.expand, self.center), \
-                   F.rotate(lbl, angle, self.resample, self.expand, self.center)
+                   F.rotate(lbl, angle, self.resample, self.expand, self.center), F.rotate(scrib_lbl, angle, self.resample, self.expand, self.center)
         else:
             return F.rotate(img, angle, self.resample, self.expand, self.center)
 
@@ -324,7 +330,7 @@ class RandomHorizontalFlip(object):
     def __init__(self, p=0.5):
         self.p = p
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be flipped.
@@ -334,11 +340,11 @@ class RandomHorizontalFlip(object):
         """
         if random.random() < self.p:
             if lbl is not None:
-                return F.hflip(img), F.hflip(lbl)
+                return F.hflip(img), F.hflip(lbl), F.hflip(scrib_lbl)
             else:
                 return F.hflip(img)
         if lbl is not None:
-            return img, lbl
+            return img, lbl, scrib_lbl
         else:
             return img
 
@@ -356,7 +362,7 @@ class RandomVerticalFlip(object):
     def __init__(self, p=0.5):
         self.p = p
 
-    def __call__(self, img, lbl):
+    def __call__(self, img, lbl, scrib_lbl):
         """
         Args:
             img (PIL Image): Image to be flipped.
@@ -368,11 +374,11 @@ class RandomVerticalFlip(object):
         """
         if random.random() < self.p:
             if lbl is not None:
-                return F.vflip(img), F.vflip(lbl)
+                return F.vflip(img), F.vflip(lbl), F.vflip(scrib_lbl)
             else:
                 return F.vflip(img)
         if lbl is not None:
-            return img, lbl
+            return img, lbl, scrib_lbl
         else:
             return img
 
@@ -392,7 +398,7 @@ class RandomScale(object):
         self.scale_range = scale_range
         self.interpolation = interpolation
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be scaled.
@@ -406,7 +412,7 @@ class RandomScale(object):
 
         if lbl is not None:
             assert img.size == lbl.size
-            return F.resize(img, target_size, self.interpolation), F.resize(lbl, target_size, InterpolationMode.NEAREST)
+            return F.resize(img, target_size, self.interpolation), F.resize(lbl, target_size, InterpolationMode.NEAREST), F.resize(scrib_lbl, target_size, InterpolationMode.NEAREST)
         else:
             return F.resize(img, target_size, self.interpolation)
 
@@ -427,7 +433,7 @@ class ToTensor(object):
 
     """
 
-    def __call__(self, pic, lbl=None):
+    def __call__(self, pic, lbl=None, scrib_lbl=None):
         """
         Note that labels will not be normalized to [0, 1].
 
@@ -439,9 +445,9 @@ class ToTensor(object):
         """
         if lbl is not None:
             if isinstance(lbl, torch.Tensor):
-                return F.to_tensor(pic), lbl
+                return F.to_tensor(pic), lbl, scrib_lbl
             else:
-                return F.to_tensor(pic), torch.from_numpy(np.array(lbl, dtype=np.uint8))
+                return F.to_tensor(pic), torch.from_numpy(np.array(lbl, dtype=np.uint8)), torch.from_numpy(np.array(scrib_lbl, dtype=np.uint8))
         else:
             return F.to_tensor(pic)
 
@@ -464,7 +470,7 @@ class Normalize(object):
         self.mean = mean
         self.std = std
 
-    def __call__(self, tensor, lbl=None):
+    def __call__(self, tensor, lbl=None, scrib_lbl=None):
         """
         Args:
             tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
@@ -474,7 +480,7 @@ class Normalize(object):
             Tensor: Unchanged Tensor label
         """
         if lbl is not None:
-            return F.normalize(tensor, self.mean, self.std), lbl
+            return F.normalize(tensor, self.mean, self.std), lbl, scrib_lbl
         else:
             return F.normalize(tensor, self.mean, self.std)
 
@@ -526,7 +532,7 @@ class RandomCrop(object):
         j = random.randint(0, w - tw)
         return i, j, th, tw
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be cropped.
@@ -557,19 +563,29 @@ class RandomCrop(object):
                 lbl_size = lbl.size
                 fill_value = self.fill_value
             assert img.size == lbl_size, 'size of img and lbl should be the same. %s, %s' % (img.size, lbl_size)
+            if isinstance(scrib_lbl, torch.Tensor):
+                scrib_lbl_size = scrib_lbl.size()[-1], scrib_lbl.size()[-2]
+                fill_value = 0
+            else:
+                scrib_lbl_size = scrib_lbl.size
+                fill_value = self.fill_value
+            assert img.size == lbl_size, 'size of img and lbl should be the same. %s, %s' % (img.size, scrib_lbl_size)
             if self.padding > 0:
                 img = F.pad(img, self.padding)
                 lbl = F.pad(lbl, self.padding)
+                scrib_lbl = F.pad(scrib_lbl, self.padding)
 
             # pad the width if needed
             if self.pad_if_needed and img.size[0] < self.size[1]:
                 img = F.pad(img, padding=int((1 + self.size[1] - img.size[0]) / 2))
                 lbl = F.pad(lbl, padding=int((1 + self.size[1] - lbl_size[0]) / 2), fill=fill_value)
+                scrib_lbl = F.pad(scrib_lbl, padding=int((1 + self.size[1] - scrib_lbl_size[0]) / 2), fill=fill_value)
 
             # pad the height if needed
             if self.pad_if_needed and img.size[1] < self.size[0]:
                 img = F.pad(img, padding=int((1 + self.size[0] - img.size[1]) / 2))
                 lbl = F.pad(lbl, padding=int((1 + self.size[0] - lbl_size[1]) / 2), fill=fill_value)
+                scrib_lbl = F.pad(scrib_lbl, padding=int((1 + self.size[0] - scrib_lbl_sizes[1]) / 2), fill=fill_value)
 
             i, j, h, w = self.get_params(img, self.size)
 
@@ -645,7 +661,7 @@ class RandomResizedCrop(object):
         j = (img.size[0] - w) // 2
         return i, j, h, w
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
         """
         Args:
             img (PIL Image): Image to be cropped and resized.
@@ -656,10 +672,10 @@ class RandomResizedCrop(object):
         if lbl is not None:
             if isinstance(lbl, torch.Tensor):
                 return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
-                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.BILINEAR)
+                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.BILINEAR), F.resized_crop(scrib_lbl, i, j, h, w, self.size, InterpolationMode.BILINEAR)
             else:
                 return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
-                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.NEAREST)
+                       F.resized_crop(lbl, i, j, h, w, self.size, InterpolationMode.NEAREST), F.resized_crop(scrib_lbl, i, j, h, w, self.size, InterpolationMode.NEAREST)
         else:
             return F.resized_crop(img, i, j, h, w, self.size, self.interpolation)
 
@@ -775,7 +791,7 @@ class CustomRandomResizeLong:
         self.min_long = min_long
         self.max_long = max_long
 
-    def __call__(self, img, lbl=None):
+    def __call__(self, img, lbl=None, scrib_lbl=None):
 
         target_long = random.randint(self.min_long, self.max_long)
         w, h = img.size
@@ -788,7 +804,8 @@ class CustomRandomResizeLong:
         img = img.resize(target_shape, resample=Image.CUBIC)
         if lbl is not None:
             lbl = lbl.resize(lbl, target_shape, Image.NEAREST)
-            return img, lbl
+            scrib_lbl = scrib_lbl.resize(scrib_lbl, target_shape, Image.NEAREST)
+            return img, lbl, scrib_lbl
         return img
 
 

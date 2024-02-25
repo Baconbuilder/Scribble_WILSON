@@ -47,6 +47,7 @@ class ResidualBlock(nn.Module):
         is_bottleneck = len(channels) == 3
         need_proj_conv = stride != 1 or in_channels != channels[-1]
 
+        ''' put together the layers '''
         if not is_bottleneck:
             bn2 = norm_act(channels[1])
             bn2.activation = "identity"
@@ -74,6 +75,8 @@ class ResidualBlock(nn.Module):
             ]
             if dropout is not None:
                 layers = layers[0:4] + [("dropout", dropout())] + layers[4:]
+                
+        ''' Create Sequential NN'''
         self.convs = nn.Sequential(OrderedDict(layers))
 
         if need_proj_conv:

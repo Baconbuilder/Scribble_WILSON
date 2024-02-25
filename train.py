@@ -27,6 +27,8 @@ class Trainer:
         self.opts = opts
         self.scaler = amp.GradScaler()
 
+        'Grab list of classes, where each entry corresponds to the the number of classes '
+        'in that training step'
         self.classes = classes = tasks.get_per_task_classes(opts.dataset, opts.task, opts.step)
 
         if classes is not None:
@@ -35,12 +37,17 @@ class Trainer:
             self.old_classes = self.tot_classes - new_classes
         else:
             self.old_classes = 0
+        """
+        The classes passed here is a list of classes for each step
+        If pretrained, make sure to include the first amount of classes and the number of classes
+        in the new dataset.
+        """
 
         self.model = make_model(opts, classes=classes)
 
         if opts.step == 0:  # if step 0, we don't need to instance the model_old
             self.model_old = None
-        else:  # instance model_old
+        else:  # instance model_old, in the case of fine tuning to new classes
             self.model_old = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step - 1))
             self.model_old.to(self.device)
             # freeze old model and set eval mode
@@ -79,10 +86,13 @@ class Trainer:
 
         self.bce = opts.bce or opts.icarl
         if self.bce:
+            # print("a")
             self.criterion = BCEWithLogitsLossWithIgnoreIndex(reduction=reduction)
         elif opts.unce and self.old_classes != 0:
+            # print("b")
             self.criterion = UnbiasedCrossEntropy(old_cl=self.old_classes, ignore_index=255, reduction=reduction)
         else:
+            # print("c")
             self.criterion = nn.CrossEntropyLoss(ignore_index=255, reduction=reduction)
 
         # ILTSS
@@ -93,8 +103,10 @@ class Trainer:
         self.lkd = opts.loss_kd
         self.lkd_flag = self.lkd > 0. and self.model_old is not None
         if opts.unkd:
+            # print("d")
             self.lkd_loss = UnbiasedKnowledgeDistillationLoss(alpha=opts.alpha)
         else:
+            # print("e")
             self.lkd_loss = KnowledgeDistillationLoss(alpha=opts.alpha)
 
         # ICARL
@@ -169,12 +181,23 @@ class Trainer:
             tq = None
 
         model.train()
-        for cur_step, (images, labels, l1h) in enumerate(train_loader):
+        for cur_step, (images, labels, scrib, l1h) in enumerate(train_loader):
 
             images = images.to(device, dtype=torch.float)
-            l1h = l1h.to(device, dtype=torch.float)  # this are one_hot
             labels = labels.to(device, dtype=torch.long)
+            scrib = scrib.to(device, dtype=torch.long) # this is scribble mask
+            l1h = l1h.to(device, dtype=torch.float)  
+            l1h_long = l1h.clone().to(device, dtype=torch.long)
+            expanded_tensor1 = l1h.unsqueeze(-1).unsqueeze(-1)
+            expanedd_tensor2 = scrib.unsqueeze(1)
+            # Perform the merge by broadcasting
+            scrib_lbl = expanded_tensor1 * expanedd_tensor2
 
+            # print("images: ", images.shape)
+            # print("l1h: ", l1h.shape)
+            # print("labels: ", labels.shape)
+            # print("scrib_lbl: ", scrib_lbl.shape)
+            
             with amp.autocast():
                 if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag or self.weakly) and self.model_old is not None:
                     with torch.no_grad():
@@ -183,10 +206,14 @@ class Trainer:
                 optim.zero_grad()
                 outputs, features = model(images, interpolate=False)
 
-                # xxx BCE / Cross Entropy Loss
+                # xxx BCE / Cross Entropy Loss 
+                # Step 0
                 if not self.weakly:
+                    # print("l1h: ", l1h.shape)
                     outputs = F.interpolate(outputs, size=images.shape[-2:], mode="bilinear", align_corners=False)
+                    # print("outputs: ", outputs.shape)
                     if not self.icarl_only_dist:
+                        # only this is true
                         loss = criterion(outputs, labels)  # B x H x W
                     else:
                         # ICaRL loss -- unique CE+KD
@@ -215,37 +242,54 @@ class Trainer:
                                                     align_corners=False)
                         # resize new output to remove new logits and keep only the old ones
                         lkd = self.lkd * self.lkd_loss(outputs, outputs_old)
-
+                
+                # step 1
                 else:
+                    # print("l1h: ", l1h.shape)
                     bs = images.shape[0]
 
                     self.pseudolabeler.eval()
                     int_masks = self.pseudolabeler(features['body']).detach()
 
                     self.pseudolabeler.train()
+                    # z = g(e(x))
                     int_masks_raw = self.pseudolabeler(features['body'])
+                    # print("int mask", int_masks_raw[:, :self.old_classes].shape)
+                    # print("old", torch.sigmoid(outputs_old.detach()).shape)
 
                     if self.opts.no_mask:
-                        l_cam_new = bce_loss(int_masks_raw, l1h, mode=self.opts.cam, reduction='mean')
+                        # l_cam_new = bce_loss(int_masks_raw, l1h, mode=self.opts.cam, reduction='mean')
+                        l_cam_new = bce_loss(int_masks_raw, scrib_lbl, mode=self.opts.cam, reduction='mean')
                     else:
-                        l_cam_new = bce_loss(int_masks_raw, l1h[:, self.old_classes - 1:],
-                                             mode=self.opts.cam, reduction='mean')
+                        # Does this
+                        # l_cam_new = bce_loss(int_masks_raw, l1h[:, self.old_classes - 1:],
+                                            #  mode=self.opts.cam, reduction='mean')
+                        l_cam_new = bce_loss(int_masks_raw, scrib_lbl[:, self.old_classes - 1:], mode=self.opts.cam, reduction='mean')
+                        # l_cam_new = bce_loss(int_masks_raw_upped, scrib_lbl[:, self.old_classes - 1:,:,:])
+                        # print(int_masks_raw.shape)
+                        # print(l1h[:, self.old_classes - 1:].shape)
+                                            
                     l_loc = F.binary_cross_entropy_with_logits(int_masks_raw[:, :self.old_classes],
                                                                torch.sigmoid(outputs_old.detach()),
                                                                reduction='mean')
+                    # print("lcam: ", l_cam_new) # caused by lcam
+                    # print("l_loc: ", l_loc)
                     l_cam_int = l_cam_new + l_loc
-
+                    
+                    # train encoder with encoder loss, set to true as default
                     if self.lde_flag:
                         lde = self.lde * self.lde_loss(features['body'], features_old['body'])
 
                     l_cam_out = 0 * outputs[0, 0].mean()  # avoid errors due to DDP
-
+                    # After 5 epochs
                     if cur_epoch >= self.pseudo_epoch:
-
+                    # if cur_epoch >= 50:
+                        # print("after")
                         int_masks_orig = int_masks.softmax(dim=1)
                         int_masks_soft = int_masks.softmax(dim=1)
 
                         if self.use_aff:
+                            # set to true as default
                             image_raw = denorm(images)
                             im = F.interpolate(image_raw, int_masks.shape[-2:], mode="bilinear",
                                                align_corners=True)
@@ -254,22 +298,27 @@ class Trainer:
                         int_masks_orig[:, 1:] *= l1h[:, :, None, None]
                         int_masks_soft[:, 1:] *= l1h[:, :, None, None]
 
+                        # Extract hard-pseuod label Equation 5
                         pseudo_gt_seg = pseudo_gtmask(int_masks_soft, ambiguous=True, cutoff_top=0.6,
                                                       cutoff_bkg=0.7, cutoff_low=0.2).detach()  # B x C x HW
 
+                        # Smoothing Equation 6
                         pseudo_gt_seg_lx = binarize(int_masks_orig)
                         pseudo_gt_seg_lx = (self.opts.alpha * pseudo_gt_seg_lx) + \
                                            ((1-self.opts.alpha) * int_masks_orig)
-
+                        
                         # ignore_mask = (pseudo_gt_seg.sum(1) > 0)
                         px_cls_per_image = pseudo_gt_seg_lx.view(bs, self.tot_classes, -1).sum(dim=-1)
+                        
                         batch_weight = torch.eq((px_cls_per_image[:, self.old_classes:] > 0),
                                                 l1h[:, self.old_classes - 1:].bool())
                         batch_weight = (
                                     batch_weight.sum(dim=1) == (self.tot_classes - self.old_classes)).float()
 
+
                         target_old = torch.sigmoid(outputs_old.detach())
 
+                        # Equation 7
                         target = torch.cat((target_old, pseudo_gt_seg_lx[:, self.old_classes:]), dim=1)
                         if self.opts.icarl_bkg == -1:
                             target[:, 0] = torch.min(target[:, 0], pseudo_gt_seg_lx[:, 0])
@@ -285,9 +334,16 @@ class Trainer:
 
                     loss = l_seg + l_cam_out
                     l_reg = l_cls + l_cam_int
+                    # print("l_seg: ", l_seg)
+                    # print("l_cam_out: ", l_cam_out)
+                    # print("l_cls: ", l_cls)
+                    # print("l_cam_int: ", l_cam_int)
 
-                # xxx first backprop of previous loss (compute the gradients for regularization methods)
+                # Backprop
                 loss_tot = loss + lkd + lde + l_icarl + l_reg
+                # print("loss", loss)
+                # print("l_reg", l_reg)
+                # print("loss_tot", loss_tot)
 
             self.scaler.scale(loss_tot).backward()
             self.scaler.step(optim)
@@ -389,18 +445,19 @@ class Trainer:
             for x in tqdm.tqdm(loader):
                 i = i+1
                 images = x[0].to(device, dtype=torch.float32)
-                labels = x[1].to(device, dtype=torch.long)
-                l1h = x[2].to(device, dtype=torch.bool)
+                labels = x[1].to(device, dtype=torch.long) # segmentation masks ground truths
+                # l1h = x[2].to(device, dtype=torch.bool) # level image labels
 
                 with amp.autocast():
-                    masks = classify(images)
+                    masks = classify(images) # get segmentation mask predictions
 
                 _, prediction = masks.max(dim=1)
 
-                labels[labels < self.old_classes] = 0
+                labels[labels < self.old_classes] = 0 # remove old classes from image
+                # supervision against new labels
                 labels = labels.cpu().numpy()
                 prediction = prediction.cpu().numpy()
-                metrics.update(labels, prediction)
+                metrics.update(labels, prediction) # segmentation mask prediction
 
             # collect statistics from multiple processes
             metrics.synch(device)

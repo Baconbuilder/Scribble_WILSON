@@ -55,6 +55,9 @@ def get_dataset(opts):
     if not os.path.exists(path_base):
         os.makedirs(path_base, exist_ok=True)
 
+    # print("opts.no_mask", opts.no_mask)
+    # print("opts.opts.step", opts.step)
+    # print("opts.weakly", opts.weakly)
     train_dst = dataset(root=opts.data_root, step_dict=step_dict, train=True, transform=train_transform,
                         idxs_path=path_base_train + f"/train-{opts.step}.npy", masking_value=masking_value,
                         masking=not opts.no_mask, overlap=opts.overlap, step=opts.step, weakly=opts.weakly,

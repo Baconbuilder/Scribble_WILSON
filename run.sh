@@ -3,9 +3,9 @@
 # We assume to have a parameter indicating whether to use overlap (0 or 1)
 port=$(python get_free_port.py)
 echo ${port}
-alias exp='python -m torch.distributed.launch --nproc_per_node=2 --master_port ${port} run.py --num_workers 4 --sample_num 8'
+alias exp='python -m torch.distributed.launch --nproc_per_node=1 --master_port ${port} run.py --num_workers 8 --sample_num 8'
 shopt -s expand_aliases
-overlap=$1
+overlap=0
 
 dataset=voc
 epochs=40
@@ -29,3 +29,5 @@ pretr_FT=${path}FT_bce_0.pth
 
 exp --name OURS --step 1 --weakly ${dataset_pars} --alpha 0.5 --lr ${lr} --step_ckpt $pretr_FT \
  --loss_de 1 --lr_policy warmup --affinity --epochs ${epochs}
+ 
+# python version used is 3.7.16

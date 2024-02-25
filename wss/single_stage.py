@@ -51,10 +51,13 @@ def balanced_mask_loss_ce(mask, pseudo_gt, gt_labels, ignore_index=255, old_clas
 
     # indices of the max classes
     mask_gt = torch.argmax(pseudo_gt, 1)
+    # print(mask.shape)
+    # print(pseudo_gt.shape)
 
     # for each pixel there should be at least one 1
     # otherwise, ignore
     ignore_mask = pseudo_gt.sum(1) < 1.
+    # print(ignore_mask.shape)
     mask_gt[ignore_mask] = ignore_index
 
     # class weight balances the loss w.r.t. number of pixels
@@ -68,14 +71,20 @@ def balanced_mask_loss_ce(mask, pseudo_gt, gt_labels, ignore_index=255, old_clas
     # BCE loss
     loss = F.cross_entropy(mask, mask_gt, ignore_index=ignore_index, reduction="none")
     loss = loss.view(bs, -1)
+    
 
     # we will have the loss only for batch indices
     # which have all classes in pseudo mask
     gt_num_labels = gt_labels.sum(-1).type_as(loss) + 1  # + BG
     ps_num_labels = (num_pixels_per_class > 0).type_as(loss).sum(-1)
     batch_weight = (gt_num_labels == ps_num_labels).type_as(loss)
-
+    # print("loss.shape", loss.shape)
+    # print("gt_num_labels.shape", gt_num_labels.shape)
+    # print("ps_num_labels.shape", ps_num_labels.shape)
+    # print("batch_weight.shape", batch_weight.shape)
+    # print(loss.mean(-1))
     loss = batch_weight * (class_weight * loss).mean(-1)
+    # print("loss.shape", loss.shape)
     return loss.mean()
 
 
@@ -224,16 +233,16 @@ class Single_Stage(nn.Module):
         masks = F.softmax(logits, dim=1)
         masks_ = masks.view(bs, c, -1)
 
-        # classification loss (normalized Global Weighted Pooling nGWP)
+        # classification loss (normalized Global Weighted Pooling nGWP) Equation 1
         y_ngwp = (features * masks_).sum(-1) / (1.0 + masks_.sum(-1))
 
-        # focal penalty loss
+        # focal penalty loss Equation 2
         y_focal = torch.pow(1 - masks_.mean(-1), 3) * torch.log(0.01 + masks_.mean(-1))
 
         # adding the losses together
-        y = y_ngwp[:, 1:] + y_focal[:, 1:]  # background excluded from the loss (not trained)
+        y = y_ngwp[:, 1:] + y_focal[:, 1:]  # background excluded from the loss (not trained) 
 
-        # == MASKS REFINEMENT (AFFINITY)
+        # == MASKS REFINEMENT (AFFINITY) Equation 3
         total_loss = self.criterion(y, labels.float())
 
         if self.cur_epoch >= self.pretrain_epoch:

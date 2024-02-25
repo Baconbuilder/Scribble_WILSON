@@ -1,6 +1,7 @@
 import torch.nn.functional as F
+import torch.nn as nn
 import torch
-
+import numpy as np
 
 def ngwp_focal(outputs, focal=True, alpha=1e-5, lam=1e-2):
     bs, c, h, w = outputs.size()
@@ -32,23 +33,49 @@ def attention_cam(outputs, alpha=0.01):
 
 
 def bce_loss(outputs, labels, mode='ngwp', reduction='sum'):
+
     bs, c, h, w = outputs.size()
-    if mode == 'ngwp':
-        y = ngwp_focal(outputs)
-    elif mode == 'att':
-        y = attention_cam(outputs)
-    else:
-        logits = outputs.view(bs, c, -1)
-        y = logits.mean(-1)
+    lbl = labels
 
-    bs, n_cls = labels.shape
-    y = y[:, -n_cls:]
+    bs, n_cls, h, w = labels.shape
+    out = outputs[:, -n_cls:, :, :]
+    out = F.interpolate(out, labels.shape[-2:], mode="bilinear", align_corners=True)
+    # create mask
+    mask = (lbl != 255).float()
+    # print(lbl.shape) B, C, H, W
+    # print(out.shape) B, C, H, W
 
+    EPS = 1e-6
     if reduction == 'sum':
-        l = F.binary_cross_entropy_with_logits(y, labels, reduction="none").sum(dim=1).mean()
+        # # l = F.binary_cross_entropy_with_logits(y, labels, reduction="none").sum(dim=1).mean()
+        per_pixel_loss = F.binary_cross_entropy_with_logits(out, lbl, reduction="none")
+        weighted_loss = per_pixel_loss * mask
+        l = weighted_loss.sum(dim=1).mean()
+        # l = F.cross_entropy(y, labels, ignore_index=-1, reduction='none').sum(dim=[1, 2]).mean()
     else:
-        l = F.binary_cross_entropy_with_logits(y, labels)
+        # # l = F.binary_cross_entropy_with_logits(y, labels)
+        # print("goes here")
+        per_pixel_loss = F.binary_cross_entropy_with_logits(out, lbl)
+        weighted_loss = per_pixel_loss * mask
+        l = weighted_loss.mean() if weighted_loss.mean() > EPS else torch.tensor(0.0)
+        # l = F.cross_entropy(y, labels, ignore_index=-1)
     return l
+
+    # bs, n_cls, h, w = labels.shape
+    # out = outputs[:, -n_cls:, :, :]
+    # # out = F.interpolate(out, labels.shape[-2:], mode="bilinear", align_corners=True)
+    # lbl_indices = labels.argmax(dim=1)  # Shape: [24, 512, 512]
+
+    # # Set ignore index for pixels with value 255 in original labels
+    # ignore_index = -1
+    # lbl_indices[labels.max(dim=1).values == 255] = ignore_index  # 255 is used in the one-hot encoding to mark ignored pixels
+
+    # if reduction == 'sum':
+    #     l = F.cross_entropy(out, lbl_indices, ignore_index=ignore_index, reduction='none').sum(dim=[1, 2]).mean()
+    # else:
+    #     l = F.cross_entropy(out, lbl_indices, ignore_index=ignore_index)
+
+    # return l
 
 
 def ce_loss(inputs, labels):
@@ -211,3 +238,48 @@ def refine_mask(cam_orig, out_old, label, tau=0.5, bin=True):
                     cam_orig[i, j] = nc
 
     return cam_orig
+
+class FSCELoss(nn.Module):
+    def __init__(self, configer=None):
+        super(FSCELoss, self).__init__()
+        self.configer = configer
+        weight = None
+
+
+        reduction = 'mean'
+
+        ignore_index = 255
+
+        self.ce_loss = nn.CrossEntropyLoss(ignore_index=ignore_index, reduction=reduction)
+
+    def forward(self, inputs, *targets, weights=None, **kwargs):
+        loss = 0.0
+        if isinstance(inputs, tuple) or isinstance(inputs, list):
+            if weights is None:
+                weights = [1.0] * len(inputs)
+
+            for i in range(len(inputs)):
+                if len(targets) > 1:
+                    target = self._scale_target(targets[i], (inputs[i].size(2), inputs[i].size(3)))
+                    loss += weights[i] * self.ce_loss(inputs[i], target)
+                else:
+                    target = self._scale_target(targets[0], (inputs[i].size(2), inputs[i].size(3)))
+                    loss += weights[i] * self.ce_loss(inputs[i], target)
+
+        else:
+            target = self._scale_target(targets[0], (inputs.size(2), inputs.size(3)))
+            loss = self.ce_loss(inputs, target)
+
+        return loss
+
+    @staticmethod
+    def _scale_target(targets_, scaled_size):
+        if targets_.dim() == 3:
+            targets = targets_.clone().unsqueeze(1).float()
+        else:
+            targets = targets_.clone().float()
+        targets = F.interpolate(targets, size=scaled_size, mode='nearest')
+
+        # print("target value:", torch.unique(targets))
+        targets[targets==-2] = -1
+        return targets.squeeze(1).long()
