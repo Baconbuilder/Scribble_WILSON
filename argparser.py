@@ -5,23 +5,9 @@ import tasks
 def modify_command_options(opts):
     if opts.dataset == 'voc':
         opts.num_classes = 21
-    elif opts.dataset == 'coco':
-        opts.num_classes = 80
 
     if not opts.visualize:
         opts.sample_num = 0
-
-    if opts.dataset == "coco-voc":
-        opts.backbone = 'wider_resnet38_a2'
-        opts.output_stride = 8
-        opts.crop_size = 448
-        opts.crop_size_val = 512
-
-    if opts.dataset == "coco-voc" and opts.new_protocol:
-        opts.crop_size = 321
-        opts.crop_size_val = 512
-        opts.output_stride = 8
-        opts.backbone = 'wider_resnet38_a2'
 
     opts.no_overlap = not opts.overlap
     opts.pooling = opts.crop_size // opts.output_stride

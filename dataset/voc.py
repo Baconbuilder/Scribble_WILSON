@@ -40,8 +40,6 @@ tasks = {
     'indoor': [5, 9, 11, 16, 18, 20]
 }
 
-coco_map = [1, 2, 3, 4, 5, 6, 7, 9, 16, 17, 18, 19, 20, 21, 44, 62, 63, 64, 67, 72]
-
 
 class VOCSegmentation(data.Dataset):
     """`Pascal VOC <http://host.robots.ox.ac.uk/pascal/VOC/>`_ Segmentation Dataset.
@@ -58,7 +56,6 @@ class VOCSegmentation(data.Dataset):
                  train=True,
                  transform=None,
                  indices=None,
-                 as_coco=False,
                  saliency=False,
                  pseudo=None):
 
@@ -87,16 +84,10 @@ class VOCSegmentation(data.Dataset):
         mask_dir = os.path.join(voc_root, 'SegmentationClassAug')
         assert os.path.exists(mask_dir), "SegmentationClassAug not found"
 
-        if as_coco:
-            if train:
-                split_f = os.path.join(splits_dir, 'train_aug_ascoco.txt')
-            else:
-                split_f = os.path.join(splits_dir, 'val_ascoco.txt')
+        if train:
+            split_f = os.path.join(splits_dir, 'train_aug.txt')
         else:
-            if train:
-                split_f = os.path.join(splits_dir, 'train_aug.txt')
-            else:
-                split_f = os.path.join(splits_dir, 'val.txt')
+            split_f = os.path.join(splits_dir, 'val.txt')
 
         if not os.path.exists(split_f):
             raise ValueError(
@@ -116,15 +107,9 @@ class VOCSegmentation(data.Dataset):
 
         # change ground truth annotation to pseudo label
         if pseudo is not None and train:
-            if not as_coco:
-                self.images = [(x[0], x[1].replace("SegmentationClassAug", f"PseudoLabels/{pseudo}/rw/")) for x in self.images]
-            else:
-                self.images = [(x[0], x[1].replace("SegmentationClassAugAsCoco", f"PseudoLabels/{pseudo}/rw")) for x in
-                               self.images]
-        if as_coco:
-            self.img_lvl_labels = np.load(os.path.join(voc_root, f"cocovoc_1h_labels_{self.image_set}.npy"))
-        else:
-            self.img_lvl_labels = np.load(os.path.join(voc_root, f"voc_1h_labels_{self.image_set}.npy"))
+            self.images = [(x[0], x[1].replace("SegmentationClassAug", f"PseudoLabels/{pseudo}/rw/")) for x in self.images]
+
+        self.img_lvl_labels = np.load(os.path.join(voc_root, f"voc_1h_labels_{self.image_set}.npy"))
 
         self.indices = indices if indices is not None else np.arange(len(self.images))
 
@@ -253,13 +238,6 @@ class VOCSegmentation(data.Dataset):
 class VOCSegmentationIncremental(IncrementalSegmentationDataset):
     def make_dataset(self, root, train, indices, saliency=False, pseudo=None):
         full_voc = VOCSegmentation(root, train, transform=None, indices=indices, saliency=saliency, pseudo=pseudo)
-        return full_voc
-
-
-class VOCasCOCOSegmentationIncremental(IncrementalSegmentationDataset):
-    def make_dataset(self, root, train, indices, saliency=False, pseudo=None):
-        full_voc = VOCSegmentation(root, train, transform=None, indices=indices, as_coco=True,
-                                   saliency=saliency, pseudo=pseudo)
         return full_voc
 
 

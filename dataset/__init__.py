@@ -1,5 +1,4 @@
-from .voc import VOCSegmentation, VOCSegmentationIncremental, VOCasCOCOSegmentationIncremental
-from .coco import COCO, COCOIncremental
+from .voc import VOCSegmentation, VOCSegmentationIncremental
 from .transform import *
 import tasks
 import os
