@@ -18,7 +18,7 @@ The proposed framework leverages scribble annotations, which offer a more cost-e
 The code has been tested with the following versions:
 ```
 python == 3.7.16
-pytorch > 1.8.0
+pytorch == 1.8.0
 ```
 If you want to install a custom environment for this code, you can run the following using [conda](https://docs.conda.io/projects/conda/en/latest/commands/install.html):
 ```
@@ -53,7 +53,7 @@ data/voc/
     ... other files 
 
 ```
-:warning: Be sure not to override the current `voc` directory of the repository. 
+Be sure not to override the current `voc` directory of the repository. 
 We suggest to link the folders inside the voc directory.
 
 
