@@ -3,6 +3,11 @@
 #### Official PyTorch Implementation
 
 ![method](https://raw.githubusercontent.com/Baconbuilder/Scribble_WILSON/master/docs/graph.png)
+```
+Illustration from "ScribbleSup: Scribble-Supervised Convolutional Networks for Semantic Segmentation"
+Di Lin, Jifeng Dai, Jiaya Jia, Kaiming He, and Jian Sun
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2016
+```
 
 This project introduces a framework for weakly incremental learning in semantic segmentation tasks, aimed at incorporating scribble annotations for efficient model updating. While traditional semantic segmentation approaches have shown remarkable performance, updating models incrementally with new categories remains a challenge. Additionally, the annotation process, particularly pixel-by-pixel annotations, is laborious and time-consuming.
 
@@ -12,8 +17,8 @@ The proposed framework leverages scribble annotations, which offer a more cost-e
 ### Requirements
 The code has been tested with the following versions:
 ```
-python >= 3.7
-pytorch > 1.6
+python == 3.7.16
+pytorch > 1.8.0
 ```
 If you want to install a custom environment for this code, you can run the following using [conda](https://docs.conda.io/projects/conda/en/latest/commands/install.html):
 ```
