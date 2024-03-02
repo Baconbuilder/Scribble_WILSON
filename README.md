@@ -1,6 +1,6 @@
 # Weakly Incremental Learning for Semantic Segmentation with Scribble Annotations
 ## Pei-Sheng Li
-#### Official PyTorch Implementation
+#### PyTorch Implementation
 
 ![method](https://raw.githubusercontent.com/Baconbuilder/Scribble_WILSON/master/docs/graph.png)
 ```
@@ -35,7 +35,7 @@ pip install wandb # to use the WandB logger
 The full list of dependencies have been provided in the requirements.txt file.
 
 ### Datasets 
-In the benchmark there is one dataset: Pascal-VOC 2012.
+Pascal-VOC 2012 is used in this project.
 
 
 To download dataset, follow the scripts: `data/download_voc.sh`
