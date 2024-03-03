@@ -38,7 +38,7 @@ The full list of dependencies have been provided in the requirements.txt file.
 Pascal-VOC 2012 is used in this project.
 
 
-To download dataset, follow the scripts: `data/download_voc.sh`
+To download the dataset, follow the scripts: `data/download_voc.sh`
 
 
 If your datasets are in a different folder, make a soft-link from the target dataset to the data folder.
@@ -56,6 +56,7 @@ data/voc/
 Be sure not to override the current `voc` directory of the repository. 
 We suggest to link the folders inside the voc directory.
 
+Scribble annotations for Pascal-VOC 2012 has already been placed in the `dataset` folder, so just leave it in place. Visit [here](https://jifengdai.org/downloads/scribble_sup/) for more information about the scribble annotations. 
 
 ### ImageNet Pretrained Models
 After setting the dataset, you download the models pretrained on ImageNet using [InPlaceABN](https://github.com/mapillary/inplace_abn).
