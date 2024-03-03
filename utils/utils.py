@@ -62,10 +62,6 @@ def fix_bn(model):
 def color_map(dataset):
     if dataset=='voc':
         return voc_cmap()
-    elif dataset=='cityscapes':
-        return cityscapes_cmap()
-    elif dataset=='ade' or dataset=='coco' or dataset=='coco-voc':
-        return ade_cmap()
 
 
 def cityscapes_cmap():

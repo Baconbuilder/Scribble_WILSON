@@ -35,14 +35,6 @@ def get_dataset(opts):
 
     if opts.dataset == 'voc':
         t_dataset = dataset = VOCSegmentationIncremental
-    elif opts.dataset == 'coco':
-        t_dataset = dataset = COCOIncremental
-    elif opts.dataset == 'coco-voc':
-        if opts.step == 0:
-            t_dataset = dataset = COCOIncremental
-        else:
-            dataset = VOCasCOCOSegmentationIncremental
-            t_dataset = COCOIncremental
     else:
         raise NotImplementedError
 
